@@ -388,56 +388,6 @@ export const MeasurementPanel: React.FC = () => {
     // No active waiting needed - the hook will capture the measurement automatically
   };
 
-  // Effect to react to captured measurements (from Native BLE)
-  React.useEffect(() => {
-    // When Native BLE captures a measurement and we're in measuring mode (or ready state)
-    if (ble.lastMeasurement && (panelState === 'measuring' || panelState === 'ready')) {
-      try {
-        // Check if we already processed this measurement (prevent duplicates)
-        const measurementKey = ble.lastMeasurement.weightKg;
-        if (lastProcessedMeasurementRef.current === measurementKey) {
-          console.log('[MeasurementPanel] Skipping already processed measurement');
-          return;
-        }
-        lastProcessedMeasurementRef.current = measurementKey;
-
-        const rawMeasurement = ble.lastMeasurement;
-        console.log('[MeasurementPanel] Processing measurement:', rawMeasurement);
-
-        setLiveWeight(rawMeasurement.weightKg);
-        setIsStable(true);
-
-        // Calculate body composition metrics
-        // currentProfile is StoredProfile which has birthYear, not age
-        const profileForCalc = currentProfile
-          ? {
-              gender: currentProfile.gender,
-              birthYear: currentProfile.birthYear,
-              heightCm: currentProfile.heightCm,
-              ethnicity: currentProfile.ethnicity,
-            }
-          : {
-              gender: 'male' as const,
-              birthYear: new Date().getFullYear() - 30, // Default to 30 years old
-              heightCm: 175,
-            };
-
-        const calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
-
-        // Handle profile detection (this shows the result screen)
-        handleProfileDetection(rawMeasurement, calculatedMetrics);
-      } catch (err) {
-        console.error('[MeasurementPanel] Error processing measurement:', err);
-        addNotification({
-          type: 'error',
-          title: 'Measurement Error',
-          message: err instanceof Error ? err.message : 'Failed to process measurement',
-          duration: 5000,
-        });
-      }
-    }
-  }, [ble.lastMeasurement, panelState, currentProfile, profiles, handleProfileDetection, setLiveWeight, setIsStable, addNotification]);
-
   /**
    * Detect profile based on weight (simplified implementation)
    * In a real app, this would use historical data and more sophisticated matching
@@ -529,6 +479,61 @@ export const MeasurementPanel: React.FC = () => {
     },
     [hasProfiles, profiles, detectProfile, saveMeasurementToProfile, setConnectionState]
   );
+
+  // Effect to react to captured measurements (from Native BLE)
+  React.useEffect(() => {
+    // When Native BLE captures a measurement and we're in measuring mode (or ready state)
+    if (ble.lastMeasurement && (panelState === 'measuring' || panelState === 'ready')) {
+      try {
+        // Check if we already processed this measurement (prevent duplicates)
+        const measurementKey = ble.lastMeasurement.weightKg;
+        if (lastProcessedMeasurementRef.current === measurementKey) {
+          console.log('[MeasurementPanel] Skipping already processed measurement');
+          return;
+        }
+        lastProcessedMeasurementRef.current = measurementKey;
+
+        const rawMeasurement = ble.lastMeasurement;
+        console.log('[MeasurementPanel] Processing measurement:', rawMeasurement);
+
+        setLiveWeight(rawMeasurement.weightKg);
+        setIsStable(true);
+
+        // Calculate body composition metrics
+        // currentProfile is StoredProfile which has birthYear, not age
+        const profileForCalc = currentProfile
+          ? {
+              gender: currentProfile.gender,
+              birthYear: currentProfile.birthYear,
+              heightCm: currentProfile.heightCm,
+              ethnicity: currentProfile.ethnicity,
+            }
+          : {
+              gender: 'male' as const,
+              birthYear: new Date().getFullYear() - 30, // Default to 30 years old
+              heightCm: 175,
+            };
+
+        const calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
+
+        // Handle profile detection (this shows the result screen)
+        handleProfileDetection(rawMeasurement, calculatedMetrics);
+      } catch (err) {
+        console.error('[MeasurementPanel] Error processing measurement:', err);
+        addNotification({
+          type: 'error',
+          title: 'Measurement Error',
+          message: err instanceof Error ? err.message : 'Failed to process measurement',
+          duration: 5000,
+        });
+      }
+    }
+  }, [ble.lastMeasurement, panelState, currentProfile, profiles, handleProfileDetection, setLiveWeight, setIsStable, addNotification]);
+
+  /**
+   * Detect profile based on weight (simplified implementation)
+   * In a real app, this would use historical data and more sophisticated matching
+   */
 
   // Effect to update connection state from Native BLE
   React.useEffect(() => {
