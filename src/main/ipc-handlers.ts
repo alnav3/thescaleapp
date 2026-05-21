@@ -666,10 +666,11 @@ export function setupNativeBLEEventForwarding(mainWindow: BrowserWindow): () => 
   }) => {
     console.log('[NativeBLE] Forwarding measurement to renderer:', measurement.weightKg, 'kg, HR:', measurement.heartRateBpm);
     
-    // AUTO-SAVE: Save measurement immediately as guest measurement
+    // AUTO-SAVE: Save measurement immediately with currently selected profile
     // This fixes the issue where renderer doesn't trigger captureMeasurement IPC
     try {
       const measurementService = getMeasurementService();
+      const profileService = getProfileService();
       
       // Create raw measurement object, filtering out null/undefined optional fields
       const rawMeasurement: any = {
@@ -687,8 +688,19 @@ export function setupNativeBLEEventForwarding(mainWindow: BrowserWindow): () => 
         rawMeasurement.heartRateBpm = measurement.heartRateBpm;
       }
       
-      console.log('[NativeBLE] [AUTO-SAVE] Saving measurement as guest...', rawMeasurement);
-      measurementService.saveMeasurementAsGuest(rawMeasurement)
+      console.log('[NativeBLE] [AUTO-SAVE] Saving measurement...', rawMeasurement);
+      
+      // Get default profile and save with it
+      profileService.getDefaultProfile()
+        .then((defaultProfile) => {
+          if (defaultProfile) {
+            console.log('[NativeBLE] [AUTO-SAVE] Using profile:', defaultProfile.id, defaultProfile.name);
+            return measurementService.captureMeasurement(defaultProfile.id);
+          } else {
+            console.log('[NativeBLE] [AUTO-SAVE] No default profile, saving as guest');
+            return measurementService.saveMeasurementAsGuest(rawMeasurement);
+          }
+        })
         .then(() => {
           console.log('[NativeBLE] [AUTO-SAVE] Measurement saved successfully');
         })
