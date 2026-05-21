@@ -61,16 +61,13 @@
 
             mkdir -p $out/bin
             
-            # Create wrapper with XDG fixes and measurement auto-save patch
+            # Create wrapper with XDG fixes
             cat > $out/bin/thescale-app << 'WRAPPER_EOF'
 #!/bin/sh
 export XDG_DATA_HOME="''${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_CONFIG_HOME="''${XDG_CONFIG_HOME:-$HOME/.config}"
 export NODE_ENV=production
 export ELECTRON_IS_DEV=0
-WRAPPER_EOF
-
-            cat >> $out/bin/thescale-app << 'WRAPPER_EOF'
 export PATH="${pkgs.lib.makeBinPath [ python3Env ]}:$PATH"
 export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
   pkgs.bluez pkgs.glib pkgs.nss pkgs.nspr pkgs.gtk3 pkgs.at-spi2-atk
@@ -81,8 +78,12 @@ export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
   pkgs.xorg.libXrandr pkgs.xorg.libxcb pkgs.xorg.libxshmfence
   pkgs.expat pkgs.libglvnd pkgs.libsecret pkgs.udev pkgs.dbus
 ]}:$LD_LIBRARY_PATH"
-exec ${pkgs.electron}/bin/electron $out/share/thescale-app "$@"
 WRAPPER_EOF
+            
+            # Use quoted heredoc for variable substitution
+            cat >> $out/bin/thescale-app << EOF
+exec ${pkgs.electron}/bin/electron $out/share/thescale-app "\$@"
+EOF
             chmod +x $out/bin/thescale-app
 
             runHook postInstall
