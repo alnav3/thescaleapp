@@ -567,8 +567,23 @@ export const MeasurementPanel: React.FC = () => {
     const profileId = (window as any).__pendingProfileId || currentProfile?.id || GUEST_PROFILE_ID;
 
     try {
+      // Filter out null/undefined values from raw measurement
+      const cleanedRaw: any = {
+        weightKg: currentMeasurement.raw.weightKg,
+      };
+      
+      if (currentMeasurement.raw.impedanceOhm !== null && currentMeasurement.raw.impedanceOhm !== undefined) {
+        cleanedRaw.impedanceOhm = currentMeasurement.raw.impedanceOhm;
+      }
+      if (currentMeasurement.raw.impedanceLowOhm !== null && currentMeasurement.raw.impedanceLowOhm !== undefined) {
+        cleanedRaw.impedanceLowOhm = currentMeasurement.raw.impedanceLowOhm;
+      }
+      if (currentMeasurement.raw.heartRateBpm !== null && currentMeasurement.raw.heartRateBpm !== undefined) {
+        cleanedRaw.heartRateBpm = currentMeasurement.raw.heartRateBpm;
+      }
+
       // Call the actual save method via IPC
-      const result = await (window as any).electronAPI.saveMeasurementWithRaw(profileId, currentMeasurement.raw);
+      const result = await (window as any).electronAPI.saveMeasurementWithRaw(profileId, cleanedRaw);
       
       if (result.success && result.data) {
         const measurement = {
