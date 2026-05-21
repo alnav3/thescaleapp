@@ -129,6 +129,19 @@ export function registerIpcHandlers(): void {
   );
 
   ipcMain.handle(
+    IpcChannels.MEASUREMENT_SAVE_WITH_RAW,
+    wrapHandler(async (_event, profileId: string, raw: any): Promise<MeasurementResult> => {
+      const measurementService = getMeasurementService();
+      const result = await measurementService.saveMeasurementWithProfile(profileId, raw);
+      // Convert Date to serializable format for IPC
+      return {
+        ...result,
+        timestamp: result.timestamp,
+      };
+    })
+  );
+
+  ipcMain.handle(
     IpcChannels.MEASUREMENT_GET_ALL,
     wrapHandler(async (_event, query: MeasurementQuery): Promise<MeasurementResult[]> => {
       const measurementService = getMeasurementService();
@@ -665,51 +678,6 @@ export function setupNativeBLEEventForwarding(mainWindow: BrowserWindow): () => 
     isHeartRateMeasurement?: boolean;
   }) => {
     console.log('[NativeBLE] Forwarding measurement to renderer:', measurement.weightKg, 'kg, HR:', measurement.heartRateBpm);
-    
-    // AUTO-SAVE: Save measurement immediately with currently selected profile
-    // This fixes the issue where renderer doesn't trigger captureMeasurement IPC
-    try {
-      const measurementService = getMeasurementService();
-      const profileService = getProfileService();
-      
-      // Create raw measurement object, filtering out null/undefined optional fields
-      const rawMeasurement: any = {
-        weightKg: measurement.weightKg,
-      };
-      
-      // Only include optional fields if they have valid values
-      if (measurement.impedanceOhm !== null && measurement.impedanceOhm !== undefined) {
-        rawMeasurement.impedanceOhm = measurement.impedanceOhm;
-      }
-      if (measurement.impedanceLowOhm !== null && measurement.impedanceLowOhm !== undefined) {
-        rawMeasurement.impedanceLowOhm = measurement.impedanceLowOhm;
-      }
-      if (measurement.heartRateBpm !== null && measurement.heartRateBpm !== undefined) {
-        rawMeasurement.heartRateBpm = measurement.heartRateBpm;
-      }
-      
-      console.log('[NativeBLE] [AUTO-SAVE] Saving measurement...', rawMeasurement);
-      
-      // Get default profile and save with it
-      profileService.getDefaultProfile()
-        .then((defaultProfile) => {
-          if (defaultProfile) {
-            console.log('[NativeBLE] [AUTO-SAVE] Using profile:', defaultProfile.id, defaultProfile.name);
-            return measurementService.saveMeasurementWithProfile(defaultProfile.id, rawMeasurement);
-          } else {
-            console.log('[NativeBLE] [AUTO-SAVE] No default profile, saving as guest');
-            return measurementService.saveMeasurementAsGuest(rawMeasurement);
-          }
-        })
-        .then(() => {
-          console.log('[NativeBLE] [AUTO-SAVE] Measurement saved successfully');
-        })
-        .catch((err) => {
-          console.error('[NativeBLE] [AUTO-SAVE] Failed to save measurement:', err);
-        });
-    } catch (err) {
-      console.error('[NativeBLE] [AUTO-SAVE] Error during auto-save:', err);
-    }
     
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IpcChannels.NATIVE_BLE_MEASUREMENT, {

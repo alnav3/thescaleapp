@@ -51,19 +51,28 @@ import { IpcChannels } from '../shared/types';
 const electronAPI: ElectronAPI = {
   // ====== Measurements ======
 
-  /**
-   * Capture a new measurement from the connected scale
-   * @param profileId - The profile to associate the measurement with
-   */
-  captureMeasurement: (profileId: string): Promise<IpcResponse<MeasurementResult>> => {
-    return ipcRenderer.invoke(IpcChannels.MEASUREMENT_CAPTURE, profileId);
-  },
+   /**
+    * Capture a new measurement from the connected scale
+    * @param profileId - The profile to associate the measurement with
+    */
+   captureMeasurement: (profileId: string): Promise<IpcResponse<MeasurementResult>> => {
+     return ipcRenderer.invoke(IpcChannels.MEASUREMENT_CAPTURE, profileId);
+   },
 
-  /**
-   * Get measurements with optional filtering and pagination
-   * @param query - Query parameters for filtering
-   */
-  getMeasurements: (query: MeasurementQuery): Promise<IpcResponse<MeasurementResult[]>> => {
+   /**
+    * Save a measurement with raw data (without reading from scale)
+    * @param profileId - The profile to associate the measurement with
+    * @param raw - The raw measurement data
+    */
+   saveMeasurementWithRaw: (profileId: string, raw: any): Promise<IpcResponse<MeasurementResult>> => {
+     return ipcRenderer.invoke(IpcChannels.MEASUREMENT_SAVE_WITH_RAW, profileId, raw);
+   },
+
+   /**
+    * Get measurements with optional filtering and pagination
+    * @param query - Query parameters for filtering
+    */
+   getMeasurements: (query: MeasurementQuery): Promise<IpcResponse<MeasurementResult[]>> => {
     return ipcRenderer.invoke(IpcChannels.MEASUREMENT_GET_ALL, query);
   },
 

@@ -451,12 +451,13 @@ export interface ConfigExport {
  */
 export const IpcChannels = {
   // Measurement channels
-  MEASUREMENT_CAPTURE: 'measurement:capture',
-  MEASUREMENT_GET_ALL: 'measurement:getAll',
-  MEASUREMENT_GET_BY_ID: 'measurement:getById',
-  MEASUREMENT_DELETE: 'measurement:delete',
-  MEASUREMENT_DELETE_ALL: 'measurement:deleteAll',
-  MEASUREMENT_COUNT: 'measurement:count',
+   MEASUREMENT_CAPTURE: 'measurement:capture',
+   MEASUREMENT_SAVE_WITH_RAW: 'measurement:saveWithRaw',
+   MEASUREMENT_GET_ALL: 'measurement:getAll',
+   MEASUREMENT_GET_BY_ID: 'measurement:getById',
+   MEASUREMENT_DELETE: 'measurement:delete',
+   MEASUREMENT_DELETE_ALL: 'measurement:deleteAll',
+   MEASUREMENT_COUNT: 'measurement:count',
 
   // Profile channels
   PROFILE_CREATE: 'profile:create',

@@ -566,33 +566,55 @@ export const MeasurementPanel: React.FC = () => {
 
     const profileId = (window as any).__pendingProfileId || currentProfile?.id || GUEST_PROFILE_ID;
 
-    // Simulate save - in real app, this would call repository
-    setTimeout(() => {
-      const measurement = {
-        id: crypto.randomUUID(),
-        timestamp: currentMeasurement.timestamp?.toISOString() || new Date().toISOString(),
-        raw: currentMeasurement.raw!,
-        calculated: currentMeasurement.calculated!,
-        userProfileId: profileId,
-      };
+    try {
+      // Call the actual save method via IPC
+      const result = await (window as any).electronAPI.saveMeasurementWithRaw(profileId, currentMeasurement.raw);
+      
+      if (result.success && result.data) {
+        const measurement = {
+          id: result.data.id,
+          timestamp: result.data.timestamp instanceof Date 
+            ? result.data.timestamp.toISOString() 
+            : result.data.timestamp,
+          raw: result.data.raw,
+          calculated: result.data.calculated,
+          userProfileId: result.data.userProfileId,
+        };
 
-      addMeasurement(measurement);
-      setCurrentMeasurement({ isSaved: true });
-      setSaving(false);
+        addMeasurement(measurement);
+        setCurrentMeasurement({ isSaved: true });
+        
+        // Clean up
+        delete (window as any).__pendingProfileId;
 
-      // Clean up
-      delete (window as any).__pendingProfileId;
-
-      const isGuestMeasurement = profileId === GUEST_PROFILE_ID;
+        const isGuestMeasurement = profileId === GUEST_PROFILE_ID;
+        addNotification({
+          type: 'success',
+          title: t('panel.saved.title'),
+          message: isGuestMeasurement
+            ? t('panel.saved.guestMessage')
+            : t('panel.status.savedToHistory'),
+          duration: 3000,
+        });
+      } else {
+        addNotification({
+          type: 'error',
+          title: t('panel.saved.error') || 'Error',
+          message: result.error?.message || 'Failed to save measurement',
+          duration: 5000,
+        });
+      }
+    } catch (err) {
+      console.error('Error saving measurement:', err);
       addNotification({
-        type: 'success',
-        title: t('panel.saved.title'),
-        message: isGuestMeasurement
-          ? t('panel.saved.guestMessage')
-          : t('panel.status.savedToHistory'),
-        duration: 3000,
+        type: 'error',
+        title: t('panel.saved.error') || 'Error',
+        message: (err instanceof Error ? err.message : 'Failed to save measurement'),
+        duration: 5000,
       });
-    }, 500);
+    } finally {
+      setSaving(false);
+    }
   }, [currentMeasurement, currentProfile?.id, t, setSaving, addMeasurement, setCurrentMeasurement, addNotification]);
 
   // Handle discard measurement
