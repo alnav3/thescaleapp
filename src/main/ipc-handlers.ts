@@ -670,17 +670,24 @@ export function setupNativeBLEEventForwarding(mainWindow: BrowserWindow): () => 
     // This fixes the issue where renderer doesn't trigger captureMeasurement IPC
     try {
       const measurementService = getMeasurementService();
-      const rawMeasurement = {
+      
+      // Create raw measurement object, filtering out null/undefined optional fields
+      const rawMeasurement: any = {
         weightKg: measurement.weightKg,
-        impedanceOhm: measurement.impedanceOhm,
-        impedanceLowOhm: measurement.impedanceLowOhm,
-        heartRateBpm: measurement.heartRateBpm,
-        isStabilized: measurement.isStabilized || false,
-        isImpedanceMeasurement: measurement.isImpedanceMeasurement || false,
-        isHeartRateMeasurement: measurement.isHeartRateMeasurement || false,
       };
       
-      console.log('[NativeBLE] [AUTO-SAVE] Saving measurement as guest...');
+      // Only include optional fields if they have valid values
+      if (measurement.impedanceOhm !== null && measurement.impedanceOhm !== undefined) {
+        rawMeasurement.impedanceOhm = measurement.impedanceOhm;
+      }
+      if (measurement.impedanceLowOhm !== null && measurement.impedanceLowOhm !== undefined) {
+        rawMeasurement.impedanceLowOhm = measurement.impedanceLowOhm;
+      }
+      if (measurement.heartRateBpm !== null && measurement.heartRateBpm !== undefined) {
+        rawMeasurement.heartRateBpm = measurement.heartRateBpm;
+      }
+      
+      console.log('[NativeBLE] [AUTO-SAVE] Saving measurement as guest...', rawMeasurement);
       measurementService.saveMeasurementAsGuest(rawMeasurement)
         .then(() => {
           console.log('[NativeBLE] [AUTO-SAVE] Measurement saved successfully');
