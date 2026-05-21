@@ -388,98 +388,6 @@ export const MeasurementPanel: React.FC = () => {
     // No active waiting needed - the hook will capture the measurement automatically
   };
 
-  /**
-   * Detect profile based on weight (simplified implementation)
-   * In a real app, this would use historical data and more sophisticated matching
-   */
-  const detectProfile = React.useCallback(
-    (weightKg: number): DetectionResult => {
-      // For demonstration, simulate detection based on current profile or ambiguous
-      const hasMultipleSimilarProfiles = profiles.length > 1;
-
-      if (currentProfile && !hasMultipleSimilarProfiles) {
-        return {
-          detectedProfileId: currentProfile.id,
-          confidence: 0.95,
-          requiresConfirmation: false,
-          candidates: [{ id: currentProfile.id, name: currentProfile.name, confidence: 0.95 }],
-        };
-      }
-
-      // Simulate ambiguous detection
-      return {
-        detectedProfileId: null,
-        confidence: 0.5,
-        requiresConfirmation: true,
-        candidates: profiles.map((p, index) => ({
-          id: p.id,
-          name: p.name,
-          confidence: 0.5 - index * 0.1,
-        })),
-      };
-    },
-    [profiles, currentProfile]
-  );
-
-  /**
-   * Save measurement to specified profile
-   */
-  const saveMeasurementToProfile = React.useCallback(
-    (raw: RawMeasurement, calculated: any, profileId: string) => {
-      setCurrentMeasurement({
-        raw,
-        calculated,
-        timestamp: new Date(),
-        isSaved: false,
-      });
-      setPanelState('result');
-
-      // Store the profile ID for saving
-      (window as any).__pendingProfileId = profileId;
-    },
-    [setCurrentMeasurement]
-  );
-
-  /**
-   * Handle profile detection after measurement capture
-   */
-  const handleProfileDetection = React.useCallback(
-    (raw: RawMeasurement, calculated: any) => {
-      setConnectionState('connected');
-
-      // If no profiles exist, always save as guest
-      if (!hasProfiles) {
-        saveMeasurementToProfile(raw, calculated, GUEST_PROFILE_ID);
-        return;
-      }
-
-      // If only one profile, use it directly
-      if (profiles.length === 1) {
-        saveMeasurementToProfile(raw, calculated, profiles[0].id);
-        return;
-      }
-
-      // Multiple profiles - simulate detection (in real app, this would use weight matching)
-      const detection = detectProfile(raw.weightKg);
-
-      if (detection.requiresConfirmation) {
-        // Ambiguous - show profile selection dialog
-        setPendingMeasurement({ raw, calculated });
-        setDetectionResult(detection);
-        setPanelState('selecting-profile');
-      } else if (detection.detectedProfileId) {
-        // Confident detection - save directly
-        saveMeasurementToProfile(raw, calculated, detection.detectedProfileId);
-      } else {
-        // No match - ask user
-        setPendingMeasurement({ raw, calculated });
-        setDetectionResult(detection);
-        setPanelState('selecting-profile');
-      }
-    },
-    [hasProfiles, profiles, detectProfile, saveMeasurementToProfile, setConnectionState]
-  );
-
   // Effect to react to captured measurements (from Native BLE)
   React.useEffect(() => {
     // When Native BLE captures a measurement and we're in measuring mode (or ready state)
@@ -500,7 +408,6 @@ export const MeasurementPanel: React.FC = () => {
         setIsStable(true);
 
         // Calculate body composition metrics
-        // currentProfile is StoredProfile which has birthYear, not age
         const profileForCalc = currentProfile
           ? {
               gender: currentProfile.gender,
@@ -510,14 +417,69 @@ export const MeasurementPanel: React.FC = () => {
             }
           : {
               gender: 'male' as const,
-              birthYear: new Date().getFullYear() - 30, // Default to 30 years old
+              birthYear: new Date().getFullYear() - 30,
               heightCm: 175,
             };
 
         const calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
 
-        // Handle profile detection (this shows the result screen)
-        handleProfileDetection(rawMeasurement, calculatedMetrics);
+        // Set connection state
+        setConnectionState('connected');
+
+        // Handle profile assignment logic directly
+        if (!hasProfiles) {
+          // No profiles - save as guest
+          setCurrentMeasurement({
+            raw: rawMeasurement,
+            calculated: calculatedMetrics,
+            timestamp: new Date(),
+            isSaved: false,
+          });
+          (window as any).__pendingProfileId = GUEST_PROFILE_ID;
+          setPanelState('result');
+        } else if (profiles.length === 1) {
+          // One profile - use it directly
+          setCurrentMeasurement({
+            raw: rawMeasurement,
+            calculated: calculatedMetrics,
+            timestamp: new Date(),
+            isSaved: false,
+          });
+          (window as any).__pendingProfileId = profiles[0].id;
+          setPanelState('result');
+        } else {
+          // Multiple profiles - show detection/selection
+          const hasMultipleSimilarProfiles = profiles.length > 1;
+          const detectedId = currentProfile && !hasMultipleSimilarProfiles 
+            ? currentProfile.id 
+            : null;
+
+          if (!detectedId) {
+            // Ambiguous - show profile selection dialog
+            setPendingMeasurement({ raw: rawMeasurement, calculated: calculatedMetrics });
+            setDetectionResult({
+              detectedProfileId: null,
+              confidence: 0.5,
+              requiresConfirmation: true,
+              candidates: profiles.map((p, index) => ({
+                id: p.id,
+                name: p.name,
+                confidence: 0.5 - index * 0.1,
+              })),
+            });
+            setPanelState('selecting-profile');
+          } else {
+            // Confident detection - save directly
+            setCurrentMeasurement({
+              raw: rawMeasurement,
+              calculated: calculatedMetrics,
+              timestamp: new Date(),
+              isSaved: false,
+            });
+            (window as any).__pendingProfileId = detectedId;
+            setPanelState('result');
+          }
+        }
       } catch (err) {
         console.error('[MeasurementPanel] Error processing measurement:', err);
         addNotification({
@@ -528,7 +490,7 @@ export const MeasurementPanel: React.FC = () => {
         });
       }
     }
-  }, [ble.lastMeasurement, panelState, currentProfile, profiles, handleProfileDetection, setLiveWeight, setIsStable, addNotification]);
+  }, [ble.lastMeasurement, panelState, currentProfile, profiles, hasProfiles, setLiveWeight, setIsStable, setConnectionState, setCurrentMeasurement, addNotification]);
 
   /**
    * Detect profile based on weight (simplified implementation)
@@ -545,11 +507,14 @@ export const MeasurementPanel: React.FC = () => {
   // Handle profile selection from dialog
   const handleProfileSelect = (profileId: string) => {
     if (pendingMeasurement) {
-      saveMeasurementToProfile(
-        pendingMeasurement.raw,
-        pendingMeasurement.calculated,
-        profileId
-      );
+      setCurrentMeasurement({
+        raw: pendingMeasurement.raw,
+        calculated: pendingMeasurement.calculated,
+        timestamp: new Date(),
+        isSaved: false,
+      });
+      (window as any).__pendingProfileId = profileId;
+      setPanelState('result');
       setPendingMeasurement(null);
       setDetectionResult(null);
     }
@@ -558,11 +523,14 @@ export const MeasurementPanel: React.FC = () => {
   // Handle save as guest from dialog
   const handleSaveAsGuest = React.useCallback(() => {
     if (pendingMeasurement) {
-      saveMeasurementToProfile(
-        pendingMeasurement.raw,
-        pendingMeasurement.calculated,
-        GUEST_PROFILE_ID
-      );
+      setCurrentMeasurement({
+        raw: pendingMeasurement.raw,
+        calculated: pendingMeasurement.calculated,
+        timestamp: new Date(),
+        isSaved: false,
+      });
+      (window as any).__pendingProfileId = GUEST_PROFILE_ID;
+      setPanelState('result');
       setPendingMeasurement(null);
       setDetectionResult(null);
 
@@ -573,7 +541,7 @@ export const MeasurementPanel: React.FC = () => {
         duration: 5000,
       });
     }
-  }, [pendingMeasurement, t, addNotification]);
+  }, [pendingMeasurement, t, addNotification, setCurrentMeasurement]);
 
   // Handle cancel profile selection
   const handleCancelSelection = () => {
