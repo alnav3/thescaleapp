@@ -392,41 +392,143 @@ export const MeasurementPanel: React.FC = () => {
   React.useEffect(() => {
     // When Native BLE captures a measurement and we're in measuring mode (or ready state)
     if (ble.lastMeasurement && (panelState === 'measuring' || panelState === 'ready')) {
-      // Check if we already processed this measurement (prevent duplicates)
-      const measurementKey = ble.lastMeasurement.weightKg;
-      if (lastProcessedMeasurementRef.current === measurementKey) {
-        console.log('[MeasurementPanel] Skipping already processed measurement');
+      try {
+        // Check if we already processed this measurement (prevent duplicates)
+        const measurementKey = ble.lastMeasurement.weightKg;
+        if (lastProcessedMeasurementRef.current === measurementKey) {
+          console.log('[MeasurementPanel] Skipping already processed measurement');
+          return;
+        }
+        lastProcessedMeasurementRef.current = measurementKey;
+
+        const rawMeasurement = ble.lastMeasurement;
+        console.log('[MeasurementPanel] Processing measurement:', rawMeasurement);
+
+        setLiveWeight(rawMeasurement.weightKg);
+        setIsStable(true);
+
+        // Calculate body composition metrics
+        // currentProfile is StoredProfile which has birthYear, not age
+        const profileForCalc = currentProfile
+          ? {
+              gender: currentProfile.gender,
+              birthYear: currentProfile.birthYear,
+              heightCm: currentProfile.heightCm,
+              ethnicity: currentProfile.ethnicity,
+            }
+          : {
+              gender: 'male' as const,
+              birthYear: new Date().getFullYear() - 30, // Default to 30 years old
+              heightCm: 175,
+            };
+
+        const calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
+
+        // Handle profile detection (this shows the result screen)
+        handleProfileDetection(rawMeasurement, calculatedMetrics);
+      } catch (err) {
+        console.error('[MeasurementPanel] Error processing measurement:', err);
+        addNotification({
+          type: 'error',
+          title: 'Measurement Error',
+          message: err instanceof Error ? err.message : 'Failed to process measurement',
+          duration: 5000,
+        });
+      }
+    }
+  }, [ble.lastMeasurement, panelState, currentProfile, profiles, handleProfileDetection, setLiveWeight, setIsStable, addNotification]);
+
+  /**
+   * Detect profile based on weight (simplified implementation)
+   * In a real app, this would use historical data and more sophisticated matching
+   */
+  const detectProfile = React.useCallback(
+    (weightKg: number): DetectionResult => {
+      // For demonstration, simulate detection based on current profile or ambiguous
+      const hasMultipleSimilarProfiles = profiles.length > 1;
+
+      if (currentProfile && !hasMultipleSimilarProfiles) {
+        return {
+          detectedProfileId: currentProfile.id,
+          confidence: 0.95,
+          requiresConfirmation: false,
+          candidates: [{ id: currentProfile.id, name: currentProfile.name, confidence: 0.95 }],
+        };
+      }
+
+      // Simulate ambiguous detection
+      return {
+        detectedProfileId: null,
+        confidence: 0.5,
+        requiresConfirmation: true,
+        candidates: profiles.map((p, index) => ({
+          id: p.id,
+          name: p.name,
+          confidence: 0.5 - index * 0.1,
+        })),
+      };
+    },
+    [profiles, currentProfile]
+  );
+
+  /**
+   * Save measurement to specified profile
+   */
+  const saveMeasurementToProfile = React.useCallback(
+    (raw: RawMeasurement, calculated: any, profileId: string) => {
+      setCurrentMeasurement({
+        raw,
+        calculated,
+        timestamp: new Date(),
+        isSaved: false,
+      });
+      setPanelState('result');
+
+      // Store the profile ID for saving
+      (window as any).__pendingProfileId = profileId;
+    },
+    [setCurrentMeasurement]
+  );
+
+  /**
+   * Handle profile detection after measurement capture
+   */
+  const handleProfileDetection = React.useCallback(
+    (raw: RawMeasurement, calculated: any) => {
+      setConnectionState('connected');
+
+      // If no profiles exist, always save as guest
+      if (!hasProfiles) {
+        saveMeasurementToProfile(raw, calculated, GUEST_PROFILE_ID);
         return;
       }
-      lastProcessedMeasurementRef.current = measurementKey;
 
-      const rawMeasurement = ble.lastMeasurement;
-      console.log('[MeasurementPanel] Processing measurement:', rawMeasurement);
+      // If only one profile, use it directly
+      if (profiles.length === 1) {
+        saveMeasurementToProfile(raw, calculated, profiles[0].id);
+        return;
+      }
 
-      setLiveWeight(rawMeasurement.weightKg);
-      setIsStable(true);
+      // Multiple profiles - simulate detection (in real app, this would use weight matching)
+      const detection = detectProfile(raw.weightKg);
 
-      // Calculate body composition metrics
-      // currentProfile is StoredProfile which has birthYear, not age
-      const profileForCalc = currentProfile
-        ? {
-            gender: currentProfile.gender,
-            birthYear: currentProfile.birthYear,
-            heightCm: currentProfile.heightCm,
-            ethnicity: currentProfile.ethnicity,
-          }
-        : {
-            gender: 'male' as const,
-            birthYear: new Date().getFullYear() - 30, // Default to 30 years old
-            heightCm: 175,
-          };
-
-      const calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
-
-      // Handle profile detection (this shows the result screen)
-      handleProfileDetection(rawMeasurement, calculatedMetrics);
-    }
-  }, [ble.lastMeasurement, panelState]);
+      if (detection.requiresConfirmation) {
+        // Ambiguous - show profile selection dialog
+        setPendingMeasurement({ raw, calculated });
+        setDetectionResult(detection);
+        setPanelState('selecting-profile');
+      } else if (detection.detectedProfileId) {
+        // Confident detection - save directly
+        saveMeasurementToProfile(raw, calculated, detection.detectedProfileId);
+      } else {
+        // No match - ask user
+        setPendingMeasurement({ raw, calculated });
+        setDetectionResult(detection);
+        setPanelState('selecting-profile');
+      }
+    },
+    [hasProfiles, profiles, detectProfile, saveMeasurementToProfile, setConnectionState]
+  );
 
   // Effect to update connection state from Native BLE
   React.useEffect(() => {
@@ -434,89 +536,6 @@ export const MeasurementPanel: React.FC = () => {
       setPanelState('ready');
     }
   }, [ble.isConnected, panelState]);
-
-  /**
-   * Handle profile detection after measurement capture
-   */
-  const handleProfileDetection = (raw: RawMeasurement, calculated: any) => {
-    setConnectionState('connected');
-
-    // If no profiles exist, always save as guest
-    if (!hasProfiles) {
-      saveMeasurementToProfile(raw, calculated, GUEST_PROFILE_ID);
-      return;
-    }
-
-    // If only one profile, use it directly
-    if (profiles.length === 1) {
-      saveMeasurementToProfile(raw, calculated, profiles[0].id);
-      return;
-    }
-
-    // Multiple profiles - simulate detection (in real app, this would use weight matching)
-    const detection = detectProfile(raw.weightKg);
-
-    if (detection.requiresConfirmation) {
-      // Ambiguous - show profile selection dialog
-      setPendingMeasurement({ raw, calculated });
-      setDetectionResult(detection);
-      setPanelState('selecting-profile');
-    } else if (detection.detectedProfileId) {
-      // Confident detection - save directly
-      saveMeasurementToProfile(raw, calculated, detection.detectedProfileId);
-    } else {
-      // No match - ask user
-      setPendingMeasurement({ raw, calculated });
-      setDetectionResult(detection);
-      setPanelState('selecting-profile');
-    }
-  };
-
-  /**
-   * Detect profile based on weight (simplified implementation)
-   * In a real app, this would use historical data and more sophisticated matching
-   */
-  const detectProfile = (weightKg: number): DetectionResult => {
-    // For demonstration, simulate detection based on current profile or ambiguous
-    const hasMultipleSimilarProfiles = profiles.length > 1;
-
-    if (currentProfile && !hasMultipleSimilarProfiles) {
-      return {
-        detectedProfileId: currentProfile.id,
-        confidence: 0.95,
-        requiresConfirmation: false,
-        candidates: [{ id: currentProfile.id, name: currentProfile.name, confidence: 0.95 }],
-      };
-    }
-
-    // Simulate ambiguous detection
-    return {
-      detectedProfileId: null,
-      confidence: 0.5,
-      requiresConfirmation: true,
-      candidates: profiles.map((p, index) => ({
-        id: p.id,
-        name: p.name,
-        confidence: 0.5 - index * 0.1,
-      })),
-    };
-  };
-
-  /**
-   * Save measurement to specified profile
-   */
-  const saveMeasurementToProfile = (raw: RawMeasurement, calculated: any, profileId: string) => {
-    setCurrentMeasurement({
-      raw,
-      calculated,
-      timestamp: new Date(),
-      isSaved: false,
-    });
-    setPanelState('result');
-
-    // Store the profile ID for saving
-    (window as any).__pendingProfileId = profileId;
-  };
 
   // Handle profile selection from dialog
   const handleProfileSelect = (profileId: string) => {
