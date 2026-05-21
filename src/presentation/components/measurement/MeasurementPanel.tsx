@@ -393,6 +393,7 @@ export const MeasurementPanel: React.FC = () => {
     // When Native BLE captures a measurement and we're in measuring mode (or ready state)
     if (ble.lastMeasurement && (panelState === 'measuring' || panelState === 'ready')) {
       try {
+        console.log('[MeasurementPanel] Got measurement, processing...');
         // Check if we already processed this measurement (prevent duplicates)
         const measurementKey = ble.lastMeasurement.weightKg;
         if (lastProcessedMeasurementRef.current === measurementKey) {
@@ -404,90 +405,116 @@ export const MeasurementPanel: React.FC = () => {
         const rawMeasurement = ble.lastMeasurement;
         console.log('[MeasurementPanel] Processing measurement:', rawMeasurement);
 
-        setLiveWeight(rawMeasurement.weightKg);
-        setIsStable(true);
+        try {
+          setLiveWeight(rawMeasurement.weightKg);
+          setIsStable(true);
+        } catch (e) {
+          console.error('[MeasurementPanel] Error setting live measurements:', e);
+        }
 
         // Calculate body composition metrics
-        const profileForCalc = currentProfile
-          ? {
-              gender: currentProfile.gender,
-              birthYear: currentProfile.birthYear,
-              heightCm: currentProfile.heightCm,
-              ethnicity: currentProfile.ethnicity,
-            }
-          : {
-              gender: 'male' as const,
-              birthYear: new Date().getFullYear() - 30,
-              heightCm: 175,
-            };
+        let calculatedMetrics;
+        try {
+          const profileForCalc = currentProfile
+            ? {
+                gender: currentProfile.gender,
+                birthYear: currentProfile.birthYear,
+                heightCm: currentProfile.heightCm,
+                ethnicity: currentProfile.ethnicity,
+              }
+            : {
+                gender: 'male' as const,
+                birthYear: new Date().getFullYear() - 30,
+                heightCm: 175,
+              };
 
-        const calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
+          calculatedMetrics = calculateAllMetrics(profileForCalc, rawMeasurement);
+          console.log('[MeasurementPanel] Calculated metrics:', calculatedMetrics);
+        } catch (e) {
+          console.error('[MeasurementPanel] Error calculating metrics:', e);
+          throw e;
+        }
 
         // Set connection state
-        setConnectionState('connected');
+        try {
+          setConnectionState('connected');
+        } catch (e) {
+          console.error('[MeasurementPanel] Error setting connection state:', e);
+        }
 
         // Handle profile assignment logic directly
-        if (!hasProfiles) {
-          // No profiles - save as guest
-          setCurrentMeasurement({
-            raw: rawMeasurement,
-            calculated: calculatedMetrics,
-            timestamp: new Date(),
-            isSaved: false,
-          });
-          (window as any).__pendingProfileId = GUEST_PROFILE_ID;
-          setPanelState('result');
-        } else if (profiles.length === 1) {
-          // One profile - use it directly
-          setCurrentMeasurement({
-            raw: rawMeasurement,
-            calculated: calculatedMetrics,
-            timestamp: new Date(),
-            isSaved: false,
-          });
-          (window as any).__pendingProfileId = profiles[0].id;
-          setPanelState('result');
-        } else {
-          // Multiple profiles - show detection/selection
-          const hasMultipleSimilarProfiles = profiles.length > 1;
-          const detectedId = currentProfile && !hasMultipleSimilarProfiles 
-            ? currentProfile.id 
-            : null;
-
-          if (!detectedId) {
-            // Ambiguous - show profile selection dialog
-            setPendingMeasurement({ raw: rawMeasurement, calculated: calculatedMetrics });
-            setDetectionResult({
-              detectedProfileId: null,
-              confidence: 0.5,
-              requiresConfirmation: true,
-              candidates: profiles.map((p, index) => ({
-                id: p.id,
-                name: p.name,
-                confidence: 0.5 - index * 0.1,
-              })),
-            });
-            setPanelState('selecting-profile');
-          } else {
-            // Confident detection - save directly
+        try {
+          if (!hasProfiles) {
+            console.log('[MeasurementPanel] No profiles, saving as guest');
+            // No profiles - save as guest
             setCurrentMeasurement({
               raw: rawMeasurement,
               calculated: calculatedMetrics,
               timestamp: new Date(),
               isSaved: false,
             });
-            (window as any).__pendingProfileId = detectedId;
+            (window as any).__pendingProfileId = GUEST_PROFILE_ID;
             setPanelState('result');
+          } else if (profiles.length === 1) {
+            console.log('[MeasurementPanel] One profile, using it');
+            // One profile - use it directly
+            setCurrentMeasurement({
+              raw: rawMeasurement,
+              calculated: calculatedMetrics,
+              timestamp: new Date(),
+              isSaved: false,
+            });
+            (window as any).__pendingProfileId = profiles[0].id;
+            setPanelState('result');
+          } else {
+            console.log('[MeasurementPanel] Multiple profiles, checking current');
+            // Multiple profiles - show detection/selection
+            const detectedId = currentProfile?.id || null;
+
+            if (!detectedId) {
+              console.log('[MeasurementPanel] No current profile, showing selection');
+              // No current profile - show profile selection dialog
+              setPendingMeasurement({ raw: rawMeasurement, calculated: calculatedMetrics });
+              setDetectionResult({
+                detectedProfileId: null,
+                confidence: 0.5,
+                requiresConfirmation: true,
+                candidates: profiles.map((p, index) => ({
+                  id: p.id,
+                  name: p.name,
+                  confidence: 0.5 - index * 0.1,
+                })),
+              });
+              setPanelState('selecting-profile');
+            } else {
+              console.log('[MeasurementPanel] Have current profile, using it');
+              // Have current profile - save directly with it
+              setCurrentMeasurement({
+                raw: rawMeasurement,
+                calculated: calculatedMetrics,
+                timestamp: new Date(),
+                isSaved: false,
+              });
+              (window as any).__pendingProfileId = detectedId;
+              setPanelState('result');
+            }
           }
+        } catch (e) {
+          console.error('[MeasurementPanel] Error in profile assignment:', e);
+          throw e;
         }
       } catch (err) {
         console.error('[MeasurementPanel] Error processing measurement:', err);
-        addNotification({
-          type: 'error',
-          title: 'Measurement Error',
-          message: err instanceof Error ? err.message : 'Failed to process measurement',
-          duration: 5000,
-        });
+        try {
+          addNotification({
+            type: 'error',
+            title: 'Measurement Error',
+            message: err instanceof Error ? err.message : 'Failed to process measurement',
+            duration: 5000,
+          });
+        } catch (notifyErr) {
+          console.error('[MeasurementPanel] Error showing notification:', notifyErr);
+        }
       }
     }
   }, [ble.lastMeasurement, panelState, currentProfile, profiles, hasProfiles, setLiveWeight, setIsStable, setConnectionState, setCurrentMeasurement, addNotification]);
