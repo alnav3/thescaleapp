@@ -94,6 +94,53 @@ export class MeasurementService {
   }
 
   /**
+   * Save a raw measurement directly to a profile with calculated metrics
+   *
+   * Used when the raw measurement data is already captured from BLE.
+   * This skips the BLE reading step and directly calculates metrics using the profile's data.
+   *
+   * @param profileId - The user profile ID to associate with the measurement
+   * @param raw - The raw measurement data already captured from the scale
+   * @returns The measurement result with calculated metrics
+   * @throws ProfileNotFoundError if profile doesn't exist
+   */
+  async saveMeasurementWithProfile(profileId: string, raw: RawMeasurement): Promise<MeasurementResult> {
+    // 1. Get user profile
+    const profile = await this.profileRepository.getById(profileId);
+    if (!profile) {
+      throw new ProfileNotFoundError(profileId);
+    }
+
+    // 2. Calculate age from birth year (and month if available)
+    const age = calculateAgeFromBirthYear(profile.birthYear, profile.birthMonth);
+
+    // 3. Calculate all metrics
+    const calculatedMetrics = calculateAllMetrics(
+      {
+        gender: profile.gender,
+        age,
+        heightCm: profile.heightCm,
+        ethnicity: profile.ethnicity,
+      },
+      raw
+    );
+
+    // 4. Create measurement result
+    const measurementResult: MeasurementResult = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      raw,
+      calculated: calculatedMetrics,
+      userProfileId: profileId,
+    };
+
+    // 5. Save to repository
+    await this.measurementRepository.save(measurementResult);
+
+    return measurementResult;
+  }
+
+  /**
    * Save a measurement as guest (unassigned)
    *
    * Used when profile cannot be determined automatically.

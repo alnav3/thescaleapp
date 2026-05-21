@@ -695,7 +695,7 @@ export function setupNativeBLEEventForwarding(mainWindow: BrowserWindow): () => 
         .then((defaultProfile) => {
           if (defaultProfile) {
             console.log('[NativeBLE] [AUTO-SAVE] Using profile:', defaultProfile.id, defaultProfile.name);
-            return measurementService.captureMeasurement(defaultProfile.id);
+            return measurementService.saveMeasurementWithProfile(defaultProfile.id, rawMeasurement);
           } else {
             console.log('[NativeBLE] [AUTO-SAVE] No default profile, saving as guest');
             return measurementService.saveMeasurementAsGuest(rawMeasurement);
