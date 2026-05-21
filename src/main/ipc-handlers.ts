@@ -665,6 +665,33 @@ export function setupNativeBLEEventForwarding(mainWindow: BrowserWindow): () => 
     isHeartRateMeasurement?: boolean;
   }) => {
     console.log('[NativeBLE] Forwarding measurement to renderer:', measurement.weightKg, 'kg, HR:', measurement.heartRateBpm);
+    
+    // AUTO-SAVE: Save measurement immediately as guest measurement
+    // This fixes the issue where renderer doesn't trigger captureMeasurement IPC
+    try {
+      const measurementService = getMeasurementService();
+      const rawMeasurement = {
+        weightKg: measurement.weightKg,
+        impedanceOhm: measurement.impedanceOhm,
+        impedanceLowOhm: measurement.impedanceLowOhm,
+        heartRateBpm: measurement.heartRateBpm,
+        isStabilized: measurement.isStabilized || false,
+        isImpedanceMeasurement: measurement.isImpedanceMeasurement || false,
+        isHeartRateMeasurement: measurement.isHeartRateMeasurement || false,
+      };
+      
+      console.log('[NativeBLE] [AUTO-SAVE] Saving measurement as guest...');
+      measurementService.saveMeasurementAsGuest(rawMeasurement)
+        .then(() => {
+          console.log('[NativeBLE] [AUTO-SAVE] Measurement saved successfully');
+        })
+        .catch((err) => {
+          console.error('[NativeBLE] [AUTO-SAVE] Failed to save measurement:', err);
+        });
+    } catch (err) {
+      console.error('[NativeBLE] [AUTO-SAVE] Error during auto-save:', err);
+    }
+    
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IpcChannels.NATIVE_BLE_MEASUREMENT, {
         ...measurement,
